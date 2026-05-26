@@ -4,18 +4,18 @@ export type { CanvasElement } from './types';
 
 const safeZPLText = (text: string) => text.replace(/\r?\n/g, ' ');
 
-const barcodeCommand = (barcodeType: string, value: string, heightDots: number, showText?: boolean, moduleWidthDots = 2) => {
+const barcodeCommand = (barcodeType: string, value: string, heightDots: number, showText?: boolean, moduleWidthDots = 2, textHeightDots?: number) => {
   const textOption = showText ? 'Y' : 'N';
   switch (barcodeType) {
     case 'EAN13':
-      return `^BY${moduleWidthDots},2,${heightDots}\n^BEN,${heightDots},${textOption},N,N^FD${value}^FS`;
+      return `${showText && textHeightDots ? `^A0N,${textHeightDots},${textHeightDots}` : ''}^BY${moduleWidthDots},2,${heightDots}\n^BEN,${heightDots},${textOption},N,N^FD${value}^FS`;
     case 'CODE39':
-      return `^BY${moduleWidthDots},2,${heightDots}\n^B3N,${heightDots},${textOption},N,N^FD${value}^FS`;
+      return `${showText && textHeightDots ? `^A0N,${textHeightDots},${textHeightDots}` : ''}^BY${moduleWidthDots},2,${heightDots}\n^B3N,${heightDots},${textOption},N,N^FD${value}^FS`;
     case 'QR':
       return `^BQN,2,5^FDLA,${value}^FS`;
     case 'CODE128':
     default:
-      return `^BY${moduleWidthDots},2,${heightDots}\n^BCN,${heightDots},${textOption},N,N^FD${value}^FS`;
+      return `${showText && textHeightDots ? `^A0N,${textHeightDots},${textHeightDots}` : ''}^BY${moduleWidthDots},2,${heightDots}\n^BCN,${heightDots},${textOption},N,N^FD${value}^FS`;
   }
 };
 
@@ -35,6 +35,7 @@ export const generateZPL = (
 ): string => {
   const zplLines: string[] = [];
   zplLines.push('^XA');
+  zplLines.push(`^FX LabelSize: ${widthMm}mm x ${heightMm}mm`);
   zplLines.push(`^PW${mmToDots(widthMm, dpi)}`);
   zplLines.push(`^LL${mmToDots(heightMm, dpi)}`);
   zplLines.push('^LH0,0');
@@ -67,8 +68,35 @@ export const generateZPL = (
       }
 
       const heightDots = Math.max(10, mmToDots(barcodeEl.heightMm ?? 10, dpi));
-      const moduleWidthDots = Math.max(1, Math.round((barcodeEl.widthMm ?? 20) * dpi / 25.4 / 20));
-      zplLines.push(`^FO${xDot},${yDot}${barcodeCommand(barcodeEl.barcodeType, value, heightDots, barcodeEl.showText, moduleWidthDots)}`);
+      const totalDots = Math.max(1, mmToDots(barcodeEl.widthMm ?? 20, dpi));
+
+      const estimateModules = (type: string, val: string) => {
+        const len = Math.max(1, val.length);
+        switch (type) {
+          case 'EAN13':
+            return 95; // fixed modules for EAN-13 (including guards)
+          case 'CODE39':
+            // 13 modules per encoded character (including inter-character gap)
+            // ZPL will add start/stop; account for them as two characters
+            return 13 * (len + 2);
+          case 'CODE128':
+            // Approximate: ~11 modules per data char + start/stop/checksum overhead
+            return 11 * len + 35;
+          case 'QR':
+            return Math.max(21, 21);
+          default:
+            return 11 * len + 35;
+        }
+      };
+
+      const modules = estimateModules(barcodeEl.barcodeType, value);
+      // Include quiet zone recommendation: at least 10 narrow-module units each side
+      const quietModules = 10;
+      const effectiveModules = modules + quietModules * 2;
+      let moduleWidthDots = Math.floor(totalDots / effectiveModules);
+      if (moduleWidthDots < 1) moduleWidthDots = 1;
+      const textHeightDots = barcodeEl.textFontSizeMm ? Math.max(1, mmToDots(barcodeEl.textFontSizeMm, dpi)) : undefined;
+      zplLines.push(`^FO${xDot},${yDot}${barcodeCommand(barcodeEl.barcodeType, value, heightDots, barcodeEl.showText, moduleWidthDots, textHeightDots)}`);
       return;
     }
   });

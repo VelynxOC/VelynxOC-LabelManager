@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { listJobs, removeJob, retryJob, clearJobs } from '../services/printQueue';
+import { listJobs, removeJob, retryJob, clearJobs, cancelJob, updateJob } from '../services/printQueue';
 
 export const PrintJobsPanel = ({ onClose }: { onClose: () => void }) => {
   const [jobs, setJobs] = useState(() => listJobs());
@@ -28,9 +28,21 @@ export const PrintJobsPanel = ({ onClose }: { onClose: () => void }) => {
             </div>
             <div className="text-xs text-slate-400">IP: {j.ip} · Intentos: {j.attempts}</div>
             {j.lastError && <div className="text-xs text-red-400">Error: {j.lastError}</div>}
-            <div className="flex gap-2 mt-2">
-              <button onClick={() => { retryJob(j.id); }} className="text-xs bg-emerald-600 px-2 rounded">Reintentar</button>
-              <button onClick={() => { removeJob(j.id); setJobs(listJobs()); }} className="text-xs text-red-400">Eliminar</button>
+            <div className="flex gap-2 mt-2 items-center">
+              <label className="text-xs text-slate-400">Prioridad</label>
+              <select value={(j.priority ?? 0).toString()} onChange={(e) => { updateJob(j.id, { priority: Number(e.target.value) }); setJobs(listJobs()); }} className="text-xs bg-slate-900 p-1 rounded">
+                <option value="2">Alta</option>
+                <option value="1">Normal</option>
+                <option value="0">Baja</option>
+              </select>
+              <button onClick={() => {
+                if (j.status === 'in-progress') return alert('No se puede cancelar trabajo en progreso');
+                if (!confirm('Confirmar cancelar trabajo?')) return;
+                cancelJob(j.id);
+                setJobs(listJobs());
+              }} className="text-xs text-yellow-300">Cancelar</button>
+              <button onClick={() => { retryJob(j.id); setJobs(listJobs()); }} className="text-xs bg-emerald-600 px-2 rounded">Reintentar</button>
+              <button onClick={() => { if (!confirm('Eliminar trabajo?')) return; removeJob(j.id); setJobs(listJobs()); }} className="text-xs text-red-400">Eliminar</button>
             </div>
           </div>
         ))}

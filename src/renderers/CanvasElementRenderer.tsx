@@ -1,22 +1,60 @@
-import { Image, Rect, Text } from 'react-konva';
-import { useEffect, useMemo, useRef, useState } from 'react';
-import type { BarcodeElement, CanvasElement, TextElement } from '../services/zpl/types';
+import {
+  Image,
+  Rect,
+  Text,
+} from 'react-konva';
+
+import {
+  useEffect,
+  useMemo,
+  useState,
+} from 'react';
+
+import type {
+  BarcodeElement,
+  CanvasElement,
+  TextElement,
+} from '../services/zpl/types';
+
 import { mmToPx } from '../utils/measurements';
 
-export function CanvasElementRenderer({ element }: { element: CanvasElement }) {
+type BwipJs = {
+  toCanvas: (
+    canvas: HTMLCanvasElement,
+    options: Record<string, unknown>
+  ) => Promise<void>;
+};
+
+declare global {
+  interface Window {
+    bwipjs?: BwipJs;
+    bwip?: BwipJs;
+  }
+}
+
+export function CanvasElementRenderer({
+  element,
+}: {
+  element: CanvasElement;
+}) {
   if (element.type === 'barcode') {
-    return <BarcodeRenderer element={element} />;
+    return (
+      <BarcodeRenderer
+        element={element}
+      />
+    );
   }
 
   if (element.type === 'text') {
-    const textEl = element as TextElement;
+    const textEl =
+      element as TextElement;
+
     return (
       <Text
         x={0}
         y={0}
         text={textEl.value}
-        fontSize={Math.max(1, mmToPx(textEl.fontSizeMm))}
-        width={Math.max(1, mmToPx(textEl.widthMm))}
+        fontSize={mmToPx(textEl.fontSizeMm)}
         fill="black"
       />
     );
@@ -25,19 +63,33 @@ export function CanvasElementRenderer({ element }: { element: CanvasElement }) {
   return null;
 }
 
-function BarcodeRenderer({ element }: { element: BarcodeElement }) {
-  const [image, setImage] = useState<HTMLImageElement | null>(null);
-  const [loading, setLoading] = useState(false);
-  const workerRef = useRef<Worker | null>(null);
+function BarcodeRenderer({
+  element,
+}: {
+  element: BarcodeElement;
+}) {
+  const [image, setImage] =
+    useState<HTMLImageElement | null>(
+      null
+    );
+
+  const [loading, setLoading] =
+    useState(false);
+
+  const [error, setError] =
+    useState<string | null>(null);
 
   const barcodeType = useMemo(() => {
     switch (element.barcodeType) {
       case 'EAN13':
         return 'ean13';
+
       case 'CODE39':
         return 'code39';
+
       case 'QR':
         return 'qrcode';
+
       case 'CODE128':
       default:
         return 'code128';
@@ -47,194 +99,263 @@ function BarcodeRenderer({ element }: { element: BarcodeElement }) {
   useEffect(() => {
     let cancelled = false;
 
-    const widthPx = Math.max(1, Math.round(mmToPx(element.widthMm)));
-    const heightPx = Math.max(1, Math.round(mmToPx(element.heightMm)));
-
-    const useWorker = typeof (window as any).OffscreenCanvas !== 'undefined' && typeof Worker !== 'undefined';
-
-    setLoading(true);
-
-    if (useWorker) {
-      const ensureWorker = () => {
-        if (workerRef.current) return;
-
-        const cdnUrls = [
-          'https://cdn.jsdelivr.net/npm/bwip-js/dist/bwip-js-min.js',
-          'https://unpkg.com/bwip-js/dist/bwip-js-min.js',
-        ];
-
-        const createCdnWorker = (urls: string[]): Worker | null => {
-          try {
-            const script = `
-              self.importScripts('${urls[0]}');
-              self.onmessage = function(e) {
-                const d = e.data;
-                const id = d.id;
-                try {
-                  const canvas = new OffscreenCanvas(d.widthPx, d.heightPx);
-                  bwipjs.toCanvas(canvas, { bcid: d.barcodeType, text: d.value, scale: 1, includetext: d.showText ? true : false, backgroundcolor: 'FFFFFF', paddingwidth:5, paddingheight:5 });
-                  canvas.convertToBlob().then(function(blob) {
-                    const reader = new FileReader();
-                    reader.onload = function() { self.postMessage({ id: id, dataUrl: reader.result }); };
-                    reader.readAsDataURL(blob);
-                  }).catch(function(err){ self.postMessage({ id: id, error: err && err.message || String(err) }); });
-                } catch (err) { self.postMessage({ id: id, error: err && err.message || String(err) }); }
-              };
-            `;
-            const blob = new Blob([script], { type: 'application/javascript' });
-            const url = URL.createObjectURL(blob);
-            return new Worker(url);
-          } catch (e) {
-            return null;
-          }
-        };
-
-        const w = createCdnWorker(cdnUrls);
-        if (w) {
-          workerRef.current = w;
-          return;
-        }
-
-        // Fallback to bundled worker
+    const renderBarcode =
+      async (): Promise<void> => {
         try {
-          // @ts-ignore - Vite supports new URL for workers
-          workerRef.current = new Worker(new URL('../workers/bwip.worker.ts', import.meta.url));
-        } catch (e) {
-          workerRef.current = null;
-        }
-      };
+          setLoading(true);
 
-      ensureWorker();
+          const widthPx =
+            Math.max(
+              1,
+              Math.round(
+                mmToPx(
+                  element.widthMm
+                )
+              )
+            );
 
-      const w = workerRef.current!;
-      const id = crypto.randomUUID();
+          const heightPx =
+            Math.max(
+              1,
+              Math.round(
+                mmToPx(
+                  element.heightMm
+                )
+              )
+            );
 
-      const handle = (ev: MessageEvent<any>) => {
-        const data = ev.data as { id: string; dataUrl?: string; error?: string };
-        if (data.id !== id) return;
-        if (data.error) {
-          setImage(null);
-          setLoading(false);
-          return;
-        }
-        const img = new window.Image();
-        img.onload = () => {
-          if (!cancelled) {
-            setImage(img);
-            setLoading(false);
-          }
-        };
-        img.src = data.dataUrl!;
-      };
+          const cdnUrls = [
+            'https://cdn.jsdelivr.net/npm/bwip-js/dist/bwip-js-min.js',
+            'https://unpkg.com/bwip-js/dist/bwip-js-min.js',
+          ];
 
-      w.addEventListener('message', handle as any);
+          let bwipjs: BwipJs | null =
+            null;
 
-      w.postMessage({ id, barcodeType, value: element.value, widthPx, heightPx, showText: element.showText });
+          for (const url of cdnUrls) {
+            try {
+              await new Promise<void>(
+                (
+                  resolve,
+                  reject
+                ) => {
+                  const existing =
+                    document.querySelector(
+                      `script[src="${url}"]`
+                    );
 
-      return () => {
-        cancelled = true;
-        w.removeEventListener('message', handle as any);
-      };
-    }
+                  if (existing) {
+                    resolve();
+                    return;
+                  }
 
-    // Fallback: try loading bwip-js from CDN at runtime (avoid bundling), then fallback to dynamic import
-    (async () => {
-      const cdnUrls = [
-        'https://cdn.jsdelivr.net/npm/bwip-js/dist/bwip-js-min.js',
-        'https://unpkg.com/bwip-js/dist/bwip-js-min.js',
-      ];
+                  const s =
+                    document.createElement(
+                      'script'
+                    );
 
-      const loadFromCdn = async (): Promise<any | null> => {
-        for (const url of cdnUrls) {
-          try {
-            await new Promise<void>((resolve, reject) => {
-              const existing = document.querySelector(`script[src="${url}"]`);
-              if (existing) {
-                // wait a tick for it to be available
-                return setTimeout(() => resolve(), 50);
+                  s.src = url;
+
+                  s.async = true;
+
+                  s.onload = () =>
+                    resolve();
+
+                  s.onerror = () =>
+                    reject(
+                      new Error(
+                        'Error cargando bwip-js'
+                      )
+                    );
+
+                  document.head.appendChild(
+                    s
+                  );
+                }
+              );
+
+              bwipjs =
+                window.bwipjs ??
+                window.bwip ??
+                null;
+
+              if (bwipjs) {
+                break;
               }
-              const s = document.createElement('script');
-              s.src = url;
-              s.async = true;
-              s.onload = () => resolve();
-              s.onerror = () => reject(new Error('cdn load error'));
-              document.head.appendChild(s);
-            });
-            // bwipjs global name may be `bwipjs` or `bwip` depending on bundle
-            // @ts-ignore
-            const g = (window as any).bwipjs || (window as any).bwip || (window as any).BWIPJS;
-            if (g) return g;
-          } catch {}
+            } catch {
+              // continuar siguiente CDN
+            }
+          }
+
+          if (!bwipjs) {
+            throw new Error(
+              'bwip-js no disponible'
+            );
+          }
+
+          const canvas =
+            document.createElement(
+              'canvas'
+            );
+
+          canvas.width = widthPx;
+
+          canvas.height = heightPx;
+
+          const options: Record<string, unknown> = {
+  bcid: barcodeType,
+
+  text: element.value,
+
+  includetext: !!element.showText,
+
+  backgroundcolor: 'FFFFFF',
+
+  paddingwidth: 0,
+
+  paddingheight: 0,
+
+  /**
+   * Escala interna bwip-js
+   */
+  scale: 4,
+
+  /**
+   * Altura barras
+   */
+  height: Math.max(
+    10,
+    element.heightMm * 0.7
+  ),
+};
+
+          if (
+            element.textFontSizeMm
+          ) {
+            options.textsize =
+              Math.max(
+                6,
+                Math.round(
+                  mmToPx(
+                    element.textFontSizeMm
+                  )
+                )
+              );
+          }
+
+          await bwipjs.toCanvas(
+            canvas,
+            options
+          );
+
+          if (cancelled) {
+            return;
+          }
+
+          const img =
+            new window.Image();
+
+          img.onload = () => {
+            if (!cancelled) {
+              setImage(img);
+
+              setLoading(false);
+            }
+          };
+
+          img.src =
+            canvas.toDataURL(
+              'image/png'
+            );
+        } catch (err: unknown) {
+          if (!cancelled) {
+            if (
+              err instanceof Error
+            ) {
+              setError(
+                err.message
+              );
+            } else {
+              setError(
+                String(err)
+              );
+            }
+
+            setLoading(false);
+
+            setImage(null);
+          }
         }
-        return null;
       };
 
-      try {
-        const bwipjs: any = await loadFromCdn();
-        if (!bwipjs) {
-          // CDN not available — cannot render barcode in main thread without bundling.
-          setLoading(false);
-          setImage(null);
-          return;
-        }
-
-        const canvas = document.createElement('canvas');
-        canvas.width = Math.max(100, widthPx * 2);
-        canvas.height = Math.max(40, heightPx * 2);
-
-        await bwipjs.toCanvas(canvas, {
-          bcid: barcodeType,
-          text: element.value,
-          scale: 2,
-          includetext: element.showText ? true : false,
-          backgroundcolor: 'FFFFFF',
-          paddingwidth: 5,
-          paddingheight: 5,
-        });
-
-        if (cancelled) return;
-
-        const img = new window.Image();
-        img.onload = () => {
-          if (!cancelled) {
-            setImage(img);
-            setLoading(false);
-          }
-        };
-        img.src = canvas.toDataURL('image/png');
-      } catch {
-        if (!cancelled) setImage(null);
-        setLoading(false);
-      }
-    })();
+    renderBarcode();
 
     return () => {
       cancelled = true;
     };
-  }, [barcodeType, element.value, element.widthMm, element.heightMm, element.showText]);
+  }, [
+    barcodeType,
+    element.value,
+    element.widthMm,
+    element.heightMm,
+    element.showText,
+    element.textFontSizeMm,
+  ]);
+
+  const widthPx = Math.max(
+    1,
+    mmToPx(element.widthMm)
+  );
+
+  const heightPx = Math.max(
+    1,
+    mmToPx(element.heightMm)
+  );
 
   if (!image) {
     return (
-      <Rect
-        x={0}
-        y={0}
-        width={Math.max(1, mmToPx(element.widthMm))}
-        height={Math.max(1, mmToPx(element.heightMm))}
-        fill={loading ? '#f1f5f9' : '#e2e8f0'}
-        stroke="#64748b"
-        strokeWidth={1}
-      />
+      <>
+        <Rect
+          x={0}
+          y={0}
+          width={widthPx}
+          height={heightPx}
+          fill={
+            loading
+              ? '#F1F5F9'
+              : '#FFFFFF'
+          }
+          stroke="#94A3B8"
+          strokeWidth={1}
+        />
+
+        <Text
+          x={6}
+          y={10}
+          text={
+            loading
+              ? 'Generando...'
+              : error ||
+                element.value
+          }
+          fontSize={14}
+          fill={
+            error
+              ? '#DC2626'
+              : '#334155'
+          }
+        />
+      </>
     );
   }
 
   return (
     <Image
-      x={0}
-      y={0}
-      image={image}
-      width={Math.max(1, mmToPx(element.widthMm))}
-      height={Math.max(1, mmToPx(element.heightMm))}
-    />
+  x={0}
+  y={0}
+  image={image}
+  width={widthPx}
+  height={heightPx}
+/>
   );
 }
-

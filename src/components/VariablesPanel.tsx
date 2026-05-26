@@ -46,18 +46,20 @@ export const VariablesPanel = ({ onChange }: { onChange?: (vars: Record<string,s
   };
 
   return (
-    <div className="mt-4">
-      <div className="flex items-center justify-between text-sm text-slate-300 mb-2">
+    <div className="flex flex-col">
+      <div className="flex items-center justify-between text-[10px] font-semibold text-slate-400 uppercase tracking-wider mb-3">
         <span>Variables</span>
-        <button onClick={addVar} className="text-xs bg-slate-700 px-2 py-1 rounded">Agregar</button>
+        <button onClick={addVar} className="text-[10px] bg-slate-700 hover:bg-slate-600 transition-colors px-2 py-1 rounded text-slate-200 border border-slate-600">+ Añadir</button>
       </div>
-      <div className="flex flex-col gap-2 max-h-40 overflow-auto">
-        {entries.length === 0 && <div className="text-xs text-slate-400">No hay variables</div>}
+      <div className="flex flex-col gap-2 max-h-40 overflow-auto pr-1">
+        {entries.length === 0 && <div className="text-xs text-slate-500 italic">No hay variables definidas.</div>}
         {entries.map(([k,v]) => (
-          <div key={k} className="flex gap-2">
-            <input value={k} onChange={(e) => updateKey(k, e.target.value)} className="flex-[0.6] bg-slate-900 p-2 rounded text-white" />
-            <input value={v} onChange={(e) => updateValue(k, e.target.value)} className="flex-1 bg-slate-900 p-2 rounded text-white" />
-            <button onClick={() => removeVar(k)} className="ml-2 text-red-400">Eliminar</button>
+          <div key={k} className="flex gap-1.5 items-center">
+            <input value={k} onChange={(e) => updateKey(k, e.target.value)} className="w-1/3 bg-slate-900 border border-slate-700 focus:border-blue-500 p-1.5 rounded text-xs text-white outline-none transition-colors" placeholder="Llave" />
+            <input value={v} onChange={(e) => updateValue(k, e.target.value)} className="w-1/2 bg-slate-900 border border-slate-700 focus:border-blue-500 p-1.5 rounded text-xs text-white outline-none transition-colors" placeholder="Valor" />
+            <button onClick={() => removeVar(k)} className="text-slate-500 hover:text-red-400 p-1 transition-colors" title="Eliminar variable">
+              ✕
+            </button>
           </div>
         ))}
       </div>

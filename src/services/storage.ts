@@ -6,6 +6,8 @@ export interface SavedTemplate {
   name: string;
   elements: CanvasElement[];
   variables?: Record<string,string>;
+  widthMm?: number;
+  heightMm?: number;
   createdAt: string;
 }
 
@@ -19,10 +21,10 @@ export function listTemplates(): SavedTemplate[] {
   }
 }
 
-export function saveTemplate(name: string, elements: CanvasElement[], variables?: Record<string,string>) {
+export function saveTemplate(name: string, elements: CanvasElement[], variables?: Record<string,string>, widthMm?: number, heightMm?: number) {
   const all = listTemplates();
   const existingIndex = all.findIndex(t => t.name === name);
-  const entry: SavedTemplate = { name, elements, variables, createdAt: new Date().toISOString() };
+  const entry: SavedTemplate = { name, elements, variables, widthMm, heightMm, createdAt: new Date().toISOString() };
   if (existingIndex >= 0) {
     all[existingIndex] = entry;
   } else {

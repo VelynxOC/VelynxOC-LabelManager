@@ -21,6 +21,8 @@ export interface BarcodeElement
   value: string;
 
   showText?: boolean;
+  // Optional human-readable text font size in mm
+  textFontSizeMm?: number;
 }
 
 export interface TextElement
