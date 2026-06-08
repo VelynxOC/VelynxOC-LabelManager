@@ -1,7 +1,6 @@
 import { useCanvasStore } from '../../store/useCanvasStore';
-import { Settings } from 'lucide-react';
+import { Settings, Tag } from 'lucide-react';
 import type { BarcodeElement, TextElement } from '../../services/zpl/types';
-
 import { notify } from '../../services/toast';
 
 // Type guard for TextElement
@@ -18,12 +17,14 @@ export const PropertiesPanel = () => {
   const elements = useCanvasStore((state) => state.elements);
   const selectedElementId = useCanvasStore((state) => state.selectedElementId);
   const updateElement = useCanvasStore((state) => state.updateElement);
+  const variables = useCanvasStore((state) => state.variables);
   
   const labelWidthMm = useCanvasStore((state) => state.labelWidthMm);
   const labelHeightMm = useCanvasStore((state) => state.labelHeightMm);
   const setLabelSize = useCanvasStore((state) => state.setLabelSize);
 
   const selectedElement = elements.find((el) => el.id === selectedElementId);
+  const varKeys = Object.keys(variables);
 
   return (
     <div className="w-80 bg-slate-800 p-5 border-l border-slate-700 h-full overflow-y-auto shrink-0 z-10 shadow-lg flex flex-col gap-6">
@@ -90,6 +91,30 @@ export const PropertiesPanel = () => {
                   onChange={(e) => updateElement(selectedElement.id, { value: e.target.value })}
                   className="bg-slate-900 border border-slate-700 text-white p-2 rounded text-xs focus:outline-none focus:border-blue-500 transition-colors"
                 />
+                {/* Insertar variable rápida */}
+                {varKeys.length > 0 && (
+                  <div className="flex flex-col gap-1.5">
+                    <span className="text-[10px] text-slate-500 flex items-center gap-1">
+                      <Tag size={10} /> Insertar variable
+                    </span>
+                    <div className="flex flex-wrap gap-1">
+                      {varKeys.map((k) => (
+                        <button
+                          key={k}
+                          onClick={() =>
+                            updateElement(selectedElement.id, {
+                              value: selectedElement.value + `{{${k}}}`,
+                            })
+                          }
+                          className="text-[10px] font-mono bg-slate-900 border border-blue-800/60 hover:border-blue-500 text-blue-400 hover:text-blue-300 px-2 py-0.5 rounded transition-colors"
+                          title={`Valor actual: ${variables[k] || '(vacío)'}`}
+                        >
+                          {`{{${k}}}`}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
               </div>
               <div className="flex flex-col gap-2">
                 <label className="text-[10px] text-slate-400 font-semibold uppercase tracking-wider">Tamaño de Fuente (mm)</label>
@@ -114,6 +139,28 @@ export const PropertiesPanel = () => {
                   onChange={(e) => updateElement(selectedElement.id, { value: e.target.value })}
                   className="bg-slate-900 border border-slate-700 text-white p-2 rounded text-xs focus:outline-none focus:border-blue-500 transition-colors"
                 />
+                {/* Insertar variable en barcode */}
+                {varKeys.length > 0 && (
+                  <div className="flex flex-col gap-1.5">
+                    <span className="text-[10px] text-slate-500 flex items-center gap-1">
+                      <Tag size={10} /> Insertar variable
+                    </span>
+                    <div className="flex flex-wrap gap-1">
+                      {varKeys.map((k) => (
+                        <button
+                          key={k}
+                          onClick={() =>
+                            updateElement(selectedElement.id, { value: `{{${k}}}` })
+                          }
+                          className="text-[10px] font-mono bg-slate-900 border border-blue-800/60 hover:border-blue-500 text-blue-400 hover:text-blue-300 px-2 py-0.5 rounded transition-colors"
+                          title={`Valor actual: ${variables[k] || '(vacío)'}`}
+                        >
+                          {`{{${k}}}`}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
               </div>
               <div className="flex flex-col gap-2">
                 <label className="text-[10px] text-slate-400 font-semibold uppercase tracking-wider">Tipo de Código</label>

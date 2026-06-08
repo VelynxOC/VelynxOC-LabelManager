@@ -17,6 +17,14 @@ import type {
 } from '../services/zpl/types';
 
 import { mmToPx } from '../utils/measurements';
+import { useCanvasStore } from '../store/useCanvasStore';
+
+/** Reemplaza {{clave}} con el valor correspondiente del diccionario de variables */
+const resolveVariables = (text: string, variables: Record<string, string>): string =>
+  text.replace(/{\{\s*([^}]+)\s*}}/g, (_m, key) => {
+    const k = key.trim();
+    return Object.prototype.hasOwnProperty.call(variables, k) ? variables[k] : `{{${k}}}`;
+  });
 
 type BwipJs = {
   toCanvas: (
@@ -46,21 +54,27 @@ export function CanvasElementRenderer({
   }
 
   if (element.type === 'text') {
-    const textEl =
-      element as TextElement;
-
-    return (
-      <Text
-        x={0}
-        y={0}
-        text={textEl.value}
-        fontSize={mmToPx(textEl.fontSizeMm)}
-        fill="black"
-      />
-    );
+    const textEl = element as TextElement;
+    return <TextRenderer element={textEl} />;
   }
 
   return null;
+}
+
+function TextRenderer({ element }: { element: TextElement }) {
+  const variables = useCanvasStore((s) => s.variables);
+  const resolved = resolveVariables(element.value, variables);
+  const isResolved = resolved !== element.value;
+
+  return (
+    <Text
+      x={0}
+      y={0}
+      text={resolved || element.value}
+      fontSize={mmToPx(element.fontSizeMm)}
+      fill={isResolved ? '#1D4ED8' : 'black'}
+    />
+  );
 }
 
 function BarcodeRenderer({
@@ -68,6 +82,7 @@ function BarcodeRenderer({
 }: {
   element: BarcodeElement;
 }) {
+  const variables = useCanvasStore((s) => s.variables);
   const [image, setImage] =
     useState<HTMLImageElement | null>(
       null
@@ -202,10 +217,11 @@ function BarcodeRenderer({
 
           canvas.height = heightPx;
 
+          const resolvedValue = resolveVariables(element.value, variables);
           const options: Record<string, unknown> = {
   bcid: barcodeType,
 
-  text: element.value,
+  text: resolvedValue || element.value,
 
   includetext: !!element.showText,
 
@@ -300,6 +316,7 @@ function BarcodeRenderer({
     element.heightMm,
     element.showText,
     element.textFontSizeMm,
+    variables,
   ]);
 
   const widthPx = Math.max(
